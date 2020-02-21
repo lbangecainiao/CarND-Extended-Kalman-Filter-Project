@@ -1,9 +1,12 @@
 #include "kalman_filter.h"
 #include "tools.h"
 #include <math.h>
+#include <iostream>
+#define pi 3.1415926
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
+using std::cout;
 
 /* 
  * Please note that the Eigen library does not initialize 
@@ -22,15 +25,6 @@ void KalmanFilter::Init(VectorXd &x_in, MatrixXd &P_in, MatrixXd &F_in,
   H_ = H_in;
   R_ = R_in;
   Q_ = Q_in;
-  MatrixXd I_ << 1,0,0,0,
-            0,1,0,0,
-            0,0,1,0,
-            0,0,0,1;
-  MatrixXd Y_;
-  MatrixXd S_;
-  MatrixXd K_;
-  Tools tools;
-  
 }
 
 void KalmanFilter::Predict() {
@@ -38,18 +32,25 @@ void KalmanFilter::Predict() {
    * TODO: predict the state
    */
   x_ = F_ * x_;
-  P_ = F_ * P_ * F_.transpose() + Q_;
-    
+  MatrixXd Ft = F_.transpose();
+  P_ = F_ * P_ * Ft + Q_;  
 }
 
 void KalmanFilter::Update(const VectorXd &z) {
   /**
    * TODO: update the state by using Kalman Filter equations
    */
-  Y_ = z - H_ * x_;
-  S_ = H_ * P_ * H_.transpose() + R_;
-  K_ = P_ * H_.transpose() * S_.inverse();
-  x_ = x_ + K_ * Y_;
+  VectorXd z_pred = H_ * x_;
+  VectorXd Y_ = z - z_pred;
+  MatrixXd Ht = H_.transpose();
+  MatrixXd S_ = H_ * P_ * Ht + R_;
+  MatrixXd Si_ = S_.inverse();
+  MatrixXd PHt = P_ * Ht;
+  MatrixXd K_ = PHt * Si_;
+  //new estimation
+  x_ = x_ + (K_ * Y_);
+  long x_size = x_.size();
+  MatrixXd I_ = MatrixXd::Identity(x_size, x_size); // Define the identity matrix
   P_ = (I_ - K_ * H_) * P_;
 }
 
@@ -57,13 +58,30 @@ void KalmanFilter::UpdateEKF(const VectorXd &z) {
   /**
    * TODO: update the state by using Extended Kalman Filter equations
    */
-  float sqrt_px_2_py_2 = sqrt(x_(0) * x_(0) + x_(1) * x_(1));
-  VectorXd h_x_<<sqrt_px_2_py_2; atan2(x_(1),x_(0)); (x_(0)*x_(2)+x_(1)*x_(3))/sqrt_px_2_py_2; 
-  Hj_ = tools.CalculateJacobian(x_);
-  Y_ = z - h_x_;
-  S_ = Hj_*P_*Hj_.transpose() + R_;
-  K_ = P_ * Hj_.transpose() * S_.inverse();
+
+  float pho = sqrt(x_(0) * x_(0) + x_(1) * x_(1));
+  float phi = atan2(x_(1),x_(0));
+  float pho_dot = (x_(0)*x_(2)+x_(1)*x_(3))/pho;
+  VectorXd h_x_= VectorXd(3);
+  h_x_<<pho, phi, pho_dot; 
+  VectorXd Y_ = z - h_x_;
+  //Normalizing the angle in vector Y_
+  if(Y_(1)<-pi)
+  {
+    Y_(1) += 2 * pi;
+   }
+  else if(Y_(1)>pi)
+  {
+    Y_(1) -= 2 * pi;
+   }
+  MatrixXd Ht = H_.transpose();
+  MatrixXd S_ = H_ * P_* Ht + R_;
+  MatrixXd Si_ = S_.inverse();
+  MatrixXd PHt = P_ * Ht;
+  MatrixXd K_ = PHt * Si_;
+  // new estimate
   x_ = x_ + K_ * Y_;
-  P_ = (I_ - K_ * Hj_) * P_;
-  
+  long x_size = x_.size();
+  MatrixXd I_ = MatrixXd::Identity(x_size, x_size); // Define the identity matrix
+  P_ = (I_ - K_ * H_) * P_;
 }
